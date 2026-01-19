@@ -3,9 +3,8 @@ import fs from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 
-// top-user-agents exports arrays of UA strings.
-// For ESM, dynamic import works reliably across Node versions.
-const { default: desktopUAs } = await import("top-user-agents/desktop.js");
+// top-user-agents exports an array of UA strings.
+const { default: userAgents } = await import("top-user-agents");
 
 function pickLatestChromeUA(userAgents) {
   // Pick the UA with the highest Chrome/<major> version.
@@ -148,7 +147,7 @@ if (!Number.isFinite(maxRedirects) || maxRedirects < 0) {
   process.exit(1);
 }
 
-const defaultUA = pickLatestChromeUA(desktopUAs);
+const defaultUA = pickLatestChromeUA(userAgents);
 const userAgent = opts.userAgent || defaultUA;
 
 const raw = fs.readFileSync(opts.input, "utf8");
