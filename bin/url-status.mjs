@@ -263,10 +263,24 @@ const urls = raw
   .filter((l) => l.length > 0)
   .filter((l) => !l.startsWith("#"));
 
+// Check if output file exists, add timestamp if so
+let outputFile = opts.output;
+let outputFileChanged = false;
+if (fs.existsSync(outputFile)) {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const ext = outputFile.lastIndexOf(".") > 0 ? outputFile.slice(outputFile.lastIndexOf(".")) : "";
+  const base = ext ? outputFile.slice(0, outputFile.lastIndexOf(".")) : outputFile;
+  outputFile = `${base}.${timestamp}${ext}`;
+  outputFileChanged = true;
+}
+
 // Show splash screen
 showSplash();
 console.log(`  Input file:  ${opts.input}`);
-console.log(`  Output file: ${opts.output}`);
+console.log(`  Output file: ${outputFile}`);
+if (outputFileChanged) {
+  console.log(`  \x1b[33m(original "${opts.output}" exists, added timestamp)\x1b[0m`);
+}
 console.log(`  URLs to check: ${urls.length}`);
 if (throttleSeconds > 0) {
   console.log(`  Throttle: ${throttleSeconds}s between requests`);
@@ -283,7 +297,7 @@ const stats = {
   networkErrors: 0,
 };
 
-const out = fs.createWriteStream(opts.output, { encoding: "utf8" });
+const out = fs.createWriteStream(outputFile, { encoding: "utf8" });
 out.write("Original URL,HTTP Status,Number of Redirects (For 3XX),Final URL (for 3XXs),Final HTTP Status\n");
 
 for (let idx = 0; idx < urls.length; idx++) {
@@ -347,4 +361,4 @@ for (let idx = 0; idx < urls.length; idx++) {
 out.end();
 
 // Show summary
-showSummary(stats, opts.output);
+showSummary(stats, outputFile);
