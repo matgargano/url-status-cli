@@ -6,6 +6,101 @@ import { Command } from "commander";
 // top-user-agents exports an array of UA strings.
 const { default: userAgents } = await import("top-user-agents");
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ASCII Art Splash Screen
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ASCII_ART = `
+██╗   ██╗██████╗ ██╗         ███████╗████████╗ █████╗ ████████╗██╗   ██╗███████╗
+██║   ██║██╔══██╗██║         ██╔════╝╚══██╔══╝██╔══██╗╚══██╔══╝██║   ██║██╔════╝
+██║   ██║██████╔╝██║         ███████╗   ██║   ███████║   ██║   ██║   ██║███████╗
+██║   ██║██╔══██╗██║         ╚════██║   ██║   ██╔══██║   ██║   ██║   ██║╚════██║
+╚██████╔╝██║  ██║███████╗    ███████║   ██║   ██║  ██║   ██║   ╚██████╔╝███████║
+ ╚═════╝ ╚═╝  ╚═╝╚══════╝    ╚══════╝   ╚═╝   ╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚══════╝
+`;
+
+function clearScreen() {
+  process.stdout.write("\x1b[2J\x1b[H");
+}
+
+function showSplash() {
+  clearScreen();
+  console.log("\x1b[36m" + ASCII_ART + "\x1b[0m"); // Cyan color
+  console.log("\x1b[90m" + "                           a statenweb joint" + "\x1b[0m");
+  console.log("\n" + "─".repeat(80) + "\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status Output Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function logFetching(idx, total, url) {
+  const progress = `[${String(idx + 1).padStart(String(total).length)}/${total}]`;
+  const truncatedUrl = url.length > 60 ? url.substring(0, 57) + "..." : url;
+  process.stdout.write(`\x1b[33m${progress}\x1b[0m Checking: ${truncatedUrl}`);
+}
+
+function logResult(status, isError = false, finalStatus = null) {
+  if (isError) {
+    console.log(` → \x1b[31mERROR\x1b[0m`);
+  } else if (status >= 200 && status < 300) {
+    console.log(` → \x1b[32m${status} OK\x1b[0m`);
+  } else if (status >= 300 && status < 400) {
+    let finalStatusText = "";
+    if (finalStatus) {
+      if (finalStatus >= 200 && finalStatus < 300) {
+        finalStatusText = ` → Final: \x1b[32m${finalStatus} OK\x1b[0m`;
+      } else if (finalStatus >= 300 && finalStatus < 400) {
+        finalStatusText = ` → Final: \x1b[34m${finalStatus} REDIRECT\x1b[0m`;
+      } else if (finalStatus >= 400 && finalStatus < 500) {
+        finalStatusText = ` → Final: \x1b[33m${finalStatus} CLIENT ERROR\x1b[0m`;
+      } else if (finalStatus >= 500) {
+        finalStatusText = ` → Final: \x1b[31m${finalStatus} SERVER ERROR\x1b[0m`;
+      } else {
+        finalStatusText = ` → Final: ${finalStatus}`;
+      }
+    }
+    console.log(` → \x1b[34m${status} REDIRECT\x1b[0m${finalStatusText}`);
+  } else if (status >= 400 && status < 500) {
+    console.log(` → \x1b[33m${status} CLIENT ERROR\x1b[0m`);
+  } else if (status >= 500) {
+    console.log(` → \x1b[31m${status} SERVER ERROR\x1b[0m`);
+  } else {
+    console.log(` → ${status}`);
+  }
+}
+
+function logThrottle(seconds) {
+  process.stdout.write(`\x1b[90m    ⏳ Waiting ${seconds}s before next request...\x1b[0m\r`);
+}
+
+function clearThrottle() {
+  process.stdout.write("\x1b[2K"); // Clear the line
+}
+
+function showSummary(stats, outputFile) {
+  console.log("\n" + "─".repeat(80));
+  console.log("\x1b[36m" + "                              SUMMARY" + "\x1b[0m");
+  console.log("─".repeat(80) + "\n");
+
+  console.log(`  Total URLs checked:  \x1b[1m${stats.total}\x1b[0m`);
+  console.log(`  \x1b[32m✓ Successful (2xx):\x1b[0m  ${stats.success}`);
+  console.log(`  \x1b[34m↪ Redirects (3xx):\x1b[0m   ${stats.redirects}`);
+  console.log(`  \x1b[33m⚠ Client Errors (4xx):\x1b[0m ${stats.clientErrors}`);
+  console.log(`  \x1b[31m✗ Server Errors (5xx):\x1b[0m ${stats.serverErrors}`);
+  console.log(`  \x1b[31m✗ Network Errors:\x1b[0m     ${stats.networkErrors}`);
+
+  console.log("\n" + "─".repeat(80));
+
+  if (stats.networkErrors + stats.clientErrors + stats.serverErrors > 0) {
+    console.log(`\n  \x1b[31m⚠ ${stats.networkErrors + stats.clientErrors + stats.serverErrors} URLs had errors\x1b[0m`);
+  } else {
+    console.log(`\n  \x1b[32m✓ All URLs checked successfully\x1b[0m`);
+  }
+
+  console.log(`\n  \x1b[1mResults saved to:\x1b[0m ${outputFile}\n`);
+}
+
 function pickLatestChromeUA(userAgents) {
   // Pick the UA with the highest Chrome/<major> version.
   let best = null;
@@ -75,6 +170,7 @@ async function fetchWithRedirectInfo(originalUrl, { userAgent, timeoutMs, maxRed
         status: firstStatus,
         redirects: "",
         finalUrl: "",
+        finalStatus: "",
       };
     }
 
@@ -88,6 +184,7 @@ async function fetchWithRedirectInfo(originalUrl, { userAgent, timeoutMs, maxRed
           status: firstStatus,
           redirects,
           finalUrl: currentUrl,
+          finalStatus: res.status,
         };
       }
 
@@ -98,6 +195,7 @@ async function fetchWithRedirectInfo(originalUrl, { userAgent, timeoutMs, maxRed
           status: firstStatus,
           redirects,
           finalUrl: currentUrl,
+          finalStatus: res.status,
         };
       }
 
@@ -111,6 +209,7 @@ async function fetchWithRedirectInfo(originalUrl, { userAgent, timeoutMs, maxRed
       status: firstStatus,
       redirects,
       finalUrl: currentUrl,
+      finalStatus: res.status,
     };
   }
 }
@@ -120,8 +219,9 @@ const program = new Command();
 program
   .name("url-status")
   .description("Check HTTP status for URLs in a txt file and output CSV")
-  .requiredOption("-i, --input <file>", "Input .txt file (one URL per line)")
-  .option("-o, --output <file>", "Output CSV file", "out.csv")
+  .argument("<input>", "Input .txt file (one URL per line)")
+  .argument("[output]", "Output CSV file (default: out.csv)")
+  .option("-o, --output <file>", "Output CSV file (overrides positional argument)")
   .option("--throttle <seconds>", "Seconds to wait between URLs", "0")
   .option("--user-agent <ua>", "Override User-Agent (defaults to latest Chrome UA)")
   .option("--timeout <ms>", "Per-request timeout in ms", "15000")
@@ -129,6 +229,12 @@ program
 
 program.parse(process.argv);
 const opts = program.opts();
+const args = program.args;
+
+// Input is first positional argument
+opts.input = args[0];
+// Output: -o flag takes priority, then positional, then default
+opts.output = opts.output || args[1] || "out.csv";
 
 const throttleSeconds = Number(opts.throttle);
 const timeoutMs = Number(opts.timeout);
@@ -157,8 +263,28 @@ const urls = raw
   .filter((l) => l.length > 0)
   .filter((l) => !l.startsWith("#"));
 
+// Show splash screen
+showSplash();
+console.log(`  Input file:  ${opts.input}`);
+console.log(`  Output file: ${opts.output}`);
+console.log(`  URLs to check: ${urls.length}`);
+if (throttleSeconds > 0) {
+  console.log(`  Throttle: ${throttleSeconds}s between requests`);
+}
+console.log("\n" + "─".repeat(80) + "\n");
+
+// Stats tracking
+const stats = {
+  total: urls.length,
+  success: 0,
+  redirects: 0,
+  clientErrors: 0,
+  serverErrors: 0,
+  networkErrors: 0,
+};
+
 const out = fs.createWriteStream(opts.output, { encoding: "utf8" });
-out.write("Original URL,HTTP Status,Number of Redirects (For 3XX),Final URL (for 3XXs)\n");
+out.write("Original URL,HTTP Status,Number of Redirects (For 3XX),Final URL (for 3XXs),Final HTTP Status\n");
 
 for (let idx = 0; idx < urls.length; idx++) {
   const originalUrl = urls[idx];
@@ -168,7 +294,10 @@ for (let idx = 0; idx < urls.length; idx++) {
     ? originalUrl
     : `https://${originalUrl}`;
 
+  logFetching(idx, urls.length, normalized);
+
   let row;
+  let isError = false;
   try {
     row = await fetchWithRedirectInfo(normalized, {
       userAgent,
@@ -177,7 +306,25 @@ for (let idx = 0; idx < urls.length; idx++) {
     });
   } catch {
     // Network errors: write status as ERR
-    row = { originalUrl: normalized, status: "ERR", redirects: "", finalUrl: "" };
+    row = { originalUrl: normalized, status: "ERR", redirects: "", finalUrl: "", finalStatus: "" };
+    isError = true;
+  }
+
+  // Log result and update stats
+  if (isError || row.status === "ERR") {
+    logResult(row.status, true);
+    stats.networkErrors++;
+  } else {
+    logResult(row.status, false, row.finalStatus || null);
+    if (row.status >= 200 && row.status < 300) {
+      stats.success++;
+    } else if (row.status >= 300 && row.status < 400) {
+      stats.redirects++;
+    } else if (row.status >= 400 && row.status < 500) {
+      stats.clientErrors++;
+    } else if (row.status >= 500) {
+      stats.serverErrors++;
+    }
   }
 
   out.write(
@@ -186,12 +333,18 @@ for (let idx = 0; idx < urls.length; idx++) {
       csvEscape(row.status),
       csvEscape(row.redirects),
       csvEscape(row.finalUrl),
+      csvEscape(row.finalStatus),
     ].join(",") + "\n"
   );
 
   if (throttleSeconds > 0 && idx < urls.length - 1) {
+    logThrottle(throttleSeconds);
     await sleep(throttleSeconds * 1000);
+    clearThrottle();
   }
 }
 
 out.end();
+
+// Show summary
+showSummary(stats, opts.output);
